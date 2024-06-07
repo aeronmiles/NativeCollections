@@ -3,17 +3,17 @@ using System.Runtime.InteropServices;
 
 public class NV12ToRGBAScript : MonoBehaviour
 {
-  [DllImport("YourNativePlugin")]
+  [DllImport("libVideoCapPlugin")]
   private static extern void GetNextFrame(System.IntPtr pixelBuffer, int width, int height);
 
   public Material material;
   public int width = 3840;
   public int height = 2160;
 
-  [SerializField] private Texture2D nv12Texture;
+  [SerializeField] private Texture2D nv12Texture;
   private Color32[] nv12Pixels;
   private GCHandle nv12Handle;
-  private System.IntPtr unv12Ptr;
+  private System.IntPtr nv12Ptr;
 
   void Start()
   {

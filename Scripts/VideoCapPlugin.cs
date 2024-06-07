@@ -2,55 +2,67 @@ using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-public class NativePlugin : MonoBehaviour
+public class VideoCapPlugin : MonoBehaviour
 {
-  [DllImport("NativePlugin")]
+  [SerializeField] private int _width = 1920;
+  [SerializeField] private int _height = 1080;
+  [SerializeField] private int _fps = 50;
+
+#if UNITY_LINUX
+  [DllImport("libVideoCapPlugin")]
   private static extern void StartCapture(int width, int height, int fps);
 
-  [DllImport("NativePlugin")]
+  [DllImport("libVideoCapPlugin")]
   private static extern void GetNextFrame(IntPtr pixelBuffer, int width, int height);
 
-  [DllImport("NativePlugin")]
+  [DllImport("libVideoCapPlugin")]
   private static extern void StopCapture();
 
-  private Texture2D texture;
-  private GCHandle pixelHandle;
-  private Color32[] pixelBuffer;
+  [SerializeField] private Texture2D _texture;
+  private GCHandle _pixelHandle;
+  private Color32[] _pixelBuffer;
 
-  void Start()
+  private void Start()
   {
-    int width = 1280;
-    int height = 720;
-    int fps = 30;
+    _texture = new Texture2D(_width, _height, TextureFormat.RGBA32, false);
+    _pixelBuffer = new Color32[_width * _height];
+    _pixelHandle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
 
-    texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-    pixelBuffer = new Color32[width * height];
-    pixelHandle = GCHandle.Alloc(pixelBuffer, GCHandleType.Pinned);
-
-    StartCapture(width, height, fps);
+    var webCamTexture = new WebCamTexture(WebCamTexture.devices[0].name, _width, _height, _fps);
+    webCamTexture.Play();
+    webCamTexture.Stop();
   }
 
-  void Update()
+  private bool _started = false;
+
+  private void Update()
   {
-    IntPtr pixelPtr = pixelHandle.AddrOfPinnedObject();
-    GetNextFrame(pixelPtr, texture.width, texture.height);
-    texture.SetPixels32(pixelBuffer);
-    texture.Apply();
+    if (Input.GetKeyDown(KeyCode.PageUp))
+    {
+      StartCapture(_texture.width, _texture.height, _fps);
+      _started = true;
+    }
+    if (!_started)
+    {
+      return;
+    }
+    IntPtr pixelPtr = _pixelHandle.AddrOfPinnedObject();
+    GetNextFrame(pixelPtr, _texture.width, _texture.height);
+    // _texture.SetPixels32(_pixelBuffer);
+    _texture.Apply();
   }
 
-  void OnDestroy()
+  private void OnDestroy()
   {
     StopCapture();
-    if (pixelHandle.IsAllocated)
+    if (_pixelHandle.IsAllocated)
     {
-      pixelHandle.Free();
+      _pixelHandle.Free();
     }
-    texture = null;
-    pixelBuffer = null;
+    _texture = null;
+    _pixelBuffer = null;
   }
 
-  public Texture2D GetTexture()
-  {
-    return texture;
-  }
+  public Texture2D GetTexture() => _texture;
+#endif
 }

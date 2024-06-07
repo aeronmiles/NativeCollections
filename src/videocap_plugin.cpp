@@ -1,4 +1,5 @@
 #include <iostream>
+#include "videocap_plugin.h"
 #include <cstring>
 #include <fcntl.h>
 #include <errno.h>
@@ -10,18 +11,6 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
-
-struct Color32 {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-    uint8_t a;
-};
-
-struct Buffer {
-    void* start;
-    size_t length;
-};
 
 int fd = -1;
 Buffer* buffers = nullptr;
