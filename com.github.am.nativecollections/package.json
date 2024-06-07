@@ -1,0 +1,18 @@
+{
+  "name": "com.github.am.nativecollections",
+  "version": "0.0.2",
+  "displayName": "AM Unity Native Collections Plugin",
+  "description": "A Native Utility Plugin for Unity",
+  "unity": "2022.3",
+  "author": {
+    "name": "Aeron Miles"
+  },
+  "changelogUrl": "",
+  "documentationUrl": "",
+  "keywords": [],
+  "scripts": {},
+  "dependencies": {},
+  "license": "MIT",
+  "licenseUrl": "",
+  "samples": []
+}

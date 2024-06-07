@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 public class ExecuteCommandPlugin
 {
   // Import the ExecuteCommand function from the shared library
-  [DllImport("libVideoCapPlugin")]
+  [DllImport("libNativeCollections")]
   private static extern IntPtr ExecuteCommand(string command);
 
   // Wrapper function to call the native plugin and get the result as a string

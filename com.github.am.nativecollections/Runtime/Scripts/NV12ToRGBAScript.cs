@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 public class NV12ToRGBAScript : MonoBehaviour
 {
-  [DllImport("libVideoCapPlugin")]
+  [DllImport("libNativeCollections")]
   private static extern void GetNextFrame(System.IntPtr pixelBuffer, int width, int height);
 
   public Material material;

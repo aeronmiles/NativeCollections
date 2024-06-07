@@ -9,13 +9,13 @@ public class VideoCapPlugin : MonoBehaviour
   [SerializeField] private int _fps = 50;
 
 #if UNITY_LINUX
-  [DllImport("libVideoCapPlugin")]
+  [DllImport("libNativeCollections")]
   private static extern void StartCapture(int width, int height, int fps);
 
-  [DllImport("libVideoCapPlugin")]
+  [DllImport("libNativeCollections")]
   private static extern void GetNextFrame(IntPtr pixelBuffer, int width, int height);
 
-  [DllImport("libVideoCapPlugin")]
+  [DllImport("libNativeCollections")]
   private static extern void StopCapture();
 
   [SerializeField] private Texture2D _texture;
