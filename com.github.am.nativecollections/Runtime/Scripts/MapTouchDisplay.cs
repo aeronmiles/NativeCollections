@@ -1,23 +1,23 @@
+using System;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
 public class MapTouchDisplay : MonoBehaviour
 {
+  public static event Action<string> OnError;
+
   // @TODO: Configuration setup
   [SerializeField] private string _touchDisplayPort = "DP-1";
+  [SerializeField] private string _touchDeviceName = "TSTP MTouch";
 
   // Call the functions to list devices, parse the ID, and map the device
   private void Start()
   {
     string xinputListOutput = ExecuteCommand("xinput list");
     int deviceId = GetDeviceId(xinputListOutput);
-    if (deviceId == -1)
+    if (deviceId != -1)
     {
-      UnityEngine.Debug.LogError("Failed to find TSTP MTouch device.");
-    }
-    else
-    {
-      UnityEngine.Debug.Log($"Mapping TSTP MTouch device with ID: {deviceId}.");
+      Debug.Log($"Mapping touch device with ID: {deviceId}.");
 
       // Get display and screen dimensions
       var (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight) = GetDisplayDimensions(_touchDisplayPort);
@@ -35,55 +35,10 @@ public class MapTouchDisplay : MonoBehaviour
     return result;
   }
 
-  // // Function to execute a shell command and return the output
-  // private string ExecuteCommand(string command)
-  // {
-  //   UnityEngine.Debug.Log($"Executing command: bash -c {command}");
-  //   ProcessStartInfo processStartInfo = new ProcessStartInfo
-  //   {
-  //     FileName = "/usr/bin/bash",
-  //     Arguments = $"-c \"{command}\"",
-  //     WorkingDirectory = "/",
-  //     RedirectStandardInput = true,
-  //     RedirectStandardOutput = true,
-  //     RedirectStandardError = true,
-  //     UseShellExecute = false,
-  //     CreateNoWindow = true
-  //   };
-
-  //   using (Process process = new Process())
-  //   {
-  //     process.StartInfo = processStartInfo;
-  //     try
-  //     {
-  //       _ = process.Start();
-  //     }
-  //     catch (Exception ex)
-  //     {
-  //       UnityEngine.Debug.LogError($"Error starting process: {ex.Message}");
-  //       throw;
-  //     }
-
-  //     string output = process.StandardOutput.ReadToEnd();
-  //     string error = process.StandardError.ReadToEnd();
-  //     UnityEngine.Debug.Log($"Command output: {output}");
-  //     UnityEngine.Debug.Log($"Command error: {error}");
-
-  //     process.WaitForExit();
-
-  //     if (!string.IsNullOrEmpty(error))
-  //     {
-  //       UnityEngine.Debug.LogError(error);
-  //     }
-
-  //     return output;
-  //   }
-  // }
-
-  // Function to parse the device ID for "TSTP MTouch"
+  // Function to parse the device ID for touch device
   private int GetDeviceId(string xinputListOutput)
   {
-    string pattern = @"TSTP MTouch\s+id=(\d+)";
+    string pattern = $@"{_touchDeviceName}\s+id=(\d+)";
     Match match = Regex.Match(xinputListOutput, pattern);
 
     if (match.Success && int.TryParse(match.Groups[1].Value, out int deviceId))
@@ -91,7 +46,8 @@ public class MapTouchDisplay : MonoBehaviour
       return deviceId;
     }
 
-    UnityEngine.Debug.LogError("TSTP MTouch device not found.");
+    Debug.LogError($"{_touchDeviceName} device not found.");
+    OnError?.Invoke($"{_touchDeviceName} device not found.");
     return -1;
   }
 
@@ -139,7 +95,7 @@ public class MapTouchDisplay : MonoBehaviour
       totalHeight = float.Parse(screenMatch.Groups[2].Value);
     }
 
-    UnityEngine.Debug.Log($"Display: {displayWidth}x{displayHeight}+{displayX}+{displayY}, Screen: {totalWidth}x{totalHeight}");
+    Debug.Log($"Display: {displayWidth}x{displayHeight}+{displayX}+{displayY}, Screen: {totalWidth}x{totalHeight}");
     return (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
   }
 
@@ -157,7 +113,7 @@ public class MapTouchDisplay : MonoBehaviour
     float offsetX = displayX / totalWidth;
     float offsetY = displayY / totalHeight;
 
-    UnityEngine.Debug.Log($"Setting transformation matrix: {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1");
+    Debug.Log($"Setting transformation matrix: {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1");
     string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
     _ = ExecuteCommand(command);
   }
