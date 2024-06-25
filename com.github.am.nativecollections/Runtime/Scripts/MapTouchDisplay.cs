@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class MapTouchDisplay : MonoBehaviour
 {
+#if UNITY_STANDALONE_LINUX
   public static event Action<string> OnError;
 
   // @TODO: Configuration setup
@@ -117,4 +118,5 @@ public class MapTouchDisplay : MonoBehaviour
     string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
     _ = ExecuteCommand(command);
   }
+#endif
 }

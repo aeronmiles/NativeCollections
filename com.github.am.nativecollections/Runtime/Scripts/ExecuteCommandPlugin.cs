@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 
 public class ExecuteCommandPlugin
 {
+#if UNITY_STANDALONE_LINUX
   // Import the ExecuteCommand function from the shared library
   [DllImport("libNativeCollections")]
   private static extern IntPtr ExecuteCommand(string command);
@@ -14,4 +15,5 @@ public class ExecuteCommandPlugin
     string result = Marshal.PtrToStringAnsi(resultPtr);
     return result;
   }
+#endif
 }
