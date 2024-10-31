@@ -68,6 +68,8 @@ public class MapTouchDisplay : MonoBehaviour
   private (float displayWidth, float displayHeight, float displayX, float displayY, float totalWidth, float totalHeight) GetDisplayDimensions(string outputDisplay)
   {
     string xrandrOutput = ExecuteCommand("xrandr");
+    Debug.Log($"Xrandr: {xrandrOutput}");
+
     float displayWidth = 1920f;
     float displayHeight = 1080f;
     float displayX = 0f;
@@ -116,6 +118,7 @@ public class MapTouchDisplay : MonoBehaviour
 
     Debug.Log($"Setting transformation matrix: {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1");
     string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
+    // string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' 1 0 0 0 1 0 0 0 1";
     _ = ExecuteCommand(command);
   }
 #endif
