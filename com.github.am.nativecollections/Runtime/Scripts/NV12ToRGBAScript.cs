@@ -18,7 +18,7 @@ public class NV12ToRGBAScript : MonoBehaviour
   void Start()
   {
     nv12Texture = new Texture2D(width, height + height / 2, TextureFormat.Alpha8, false);
-    nv12Texture.name = "NV12ToRGBAScript::Start::nv12Texture";
+    // nv12Texture.name = "NV12ToRGBAScript::Start::nv12Texture";
     nv12Pixels = new Color32[width * (height + height / 2)];
     nv12Handle = GCHandle.Alloc(nv12Pixels, GCHandleType.Pinned);
     nv12Ptr = nv12Handle.AddrOfPinnedObject();

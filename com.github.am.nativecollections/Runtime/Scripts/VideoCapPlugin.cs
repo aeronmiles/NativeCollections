@@ -25,7 +25,7 @@ public class VideoCapPlugin : MonoBehaviour
   private void Start()
   {
     _texture = new Texture2D(_width, _height, TextureFormat.RGBA32, false);
-    _texture.name = "VideoCapPlugin::Start::_texture";
+    // _texture.name = "VideoCapPlugin::Start::_texture";
     _pixelBuffer = new Color32[_width * _height];
     _pixelHandle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
 
