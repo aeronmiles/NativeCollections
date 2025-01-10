@@ -1,125 +1,230 @@
 using System;
 using System.Text.RegularExpressions;
+using System.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class MapTouchDisplay : MonoBehaviour
 {
 #if UNITY_STANDALONE_LINUX
-  public static event Action<string> OnError;
+    public static event Action<string> OnError;
+    
+    private string _touchDisplayPort;
+    private string _touchDeviceName;
+    private const int EXPECTED_TOUCH_WIDTH = 1920;
+    private const int EXPECTED_TOUCH_HEIGHT = 1080;
 
-  // @TODO: Configuration setup
-  [SerializeField] private string _touchDisplayPort = "DP-1";
-  [SerializeField] private string _touchDeviceName = "TSTP MTouch";
-
-  // Call the functions to list devices, parse the ID, and map the device
-  private void Start()
-  {
-    string xinputListOutput = ExecuteCommand("xinput list");
-    int deviceId = GetDeviceId(xinputListOutput);
-    if (deviceId != -1)
+    private void Start()
     {
-      Debug.Log($"Mapping touch device with ID: {deviceId}.");
+        if (!DetectDisplayConfiguration())
+        {
+            Debug.LogError("Failed to detect valid display configuration.");
+            OnError?.Invoke("Failed to detect valid display configuration.");
+            return;
+        }
 
-      // Get display and screen dimensions
-      var (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight) = GetDisplayDimensions(_touchDisplayPort);
+        if (!DetectTouchDevice())
+        {
+            Debug.LogError("Failed to detect touch input device.");
+            OnError?.Invoke("Failed to detect touch input device.");
+            return;
+        }
 
-      MapDeviceToOutput(deviceId, _touchDisplayPort);
-      SetCoordinateTransformationMatrix(deviceId, displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
-    }
-  }
+        string xinputListOutput = ExecuteCommand("xinput list");
+        int deviceId = GetDeviceId(xinputListOutput);
+        if (deviceId != -1)
+        {
+            Debug.Log($"Mapping touch device '{_touchDeviceName}' (ID: {deviceId}) to display {_touchDisplayPort}");
 
-  private string ExecuteCommand(string command)
-  {
-    Debug.Log($"Executing command: bash -c {command}");
-    var result = ExecuteCommandPlugin.RunCommand($"bash -c \"{command}\"");
-    Debug.Log($"Command output: {result}");
-    return result;
-  }
-
-  // Function to parse the device ID for touch device
-  private int GetDeviceId(string xinputListOutput)
-  {
-    string pattern = $@"{_touchDeviceName}\s+id=(\d+)";
-    Match match = Regex.Match(xinputListOutput, pattern);
-
-    if (match.Success && int.TryParse(match.Groups[1].Value, out int deviceId))
-    {
-      return deviceId;
+            var (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight) = GetDisplayDimensions(_touchDisplayPort);
+            MapDeviceToOutput(deviceId, _touchDisplayPort);
+            SetCoordinateTransformationMatrix(deviceId, displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
+        }
     }
 
-    Debug.LogError($"{_touchDeviceName} device not found.");
-    OnError?.Invoke($"{_touchDeviceName} device not found.");
-    return -1;
-  }
-
-  // Function to map the device to the specified output
-  private void MapDeviceToOutput(int deviceId, string output)
-  {
-    if (deviceId < 0)
+    private class DisplayInfo
     {
-      return;
+        public string Port { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public bool IsLandscape => Width > Height;
+        public override string ToString() => $"{Port}: {Width}x{Height} at +{X}+{Y}";
     }
 
-    string command = $"xinput map-to-output {deviceId} {output}";
-    _ = ExecuteCommand(command);
-  }
-
-  // Function to get the display dimensions using xrandr
-  private (float displayWidth, float displayHeight, float displayX, float displayY, float totalWidth, float totalHeight) GetDisplayDimensions(string outputDisplay)
-  {
-    string xrandrOutput = ExecuteCommand("xrandr");
-    Debug.Log($"Xrandr: {xrandrOutput}");
-
-    float displayWidth = 1920f;
-    float displayHeight = 1080f;
-    float displayX = 0f;
-    float displayY = 0f;
-    float totalWidth = Screen.width;
-    float totalHeight = Screen.height;
-
-    // Regex to find the current resolution and position of the specified display
-    string displayPattern = $@"{Regex.Escape(outputDisplay)} connected.*?(\d+)x(\d+)\+(\d+)\+(\d+)";
-    Match displayMatch = Regex.Match(xrandrOutput, displayPattern);
-
-    if (displayMatch.Success)
+    private bool DetectDisplayConfiguration()
     {
-      displayWidth = float.Parse(displayMatch.Groups[1].Value);
-      displayHeight = float.Parse(displayMatch.Groups[2].Value);
-      displayX = float.Parse(displayMatch.Groups[3].Value);
-      displayY = float.Parse(displayMatch.Groups[4].Value);
+        string xrandrOutput = ExecuteCommand("xrandr");
+        var displays = new List<DisplayInfo>();
+        
+        // Pattern to match connected displays, handling both normal and rotated configurations
+        string connectedPattern = @"(\S+) connected(?: primary)? (?:(\d+)x(\d+)\+(\d+)\+(\d+)|(\d+)x(\d+)\+(\d+)\+(\d+) left)";
+        var matches = Regex.Matches(xrandrOutput, connectedPattern);
+
+        foreach (Match match in matches)
+        {
+            string port = match.Groups[1].Value;
+            int width, height, x, y;
+            
+            if (match.Groups[2].Success)  // Normal orientation
+            {
+                width = int.Parse(match.Groups[2].Value);
+                height = int.Parse(match.Groups[3].Value);
+                x = int.Parse(match.Groups[4].Value);
+                y = int.Parse(match.Groups[5].Value);
+            }
+            else  // Rotated (left) orientation - swap width and height
+            {
+                // For left rotation, the reported resolution is already swapped
+                width = int.Parse(match.Groups[6].Value);
+                height = int.Parse(match.Groups[7].Value);
+                x = int.Parse(match.Groups[8].Value);
+                y = int.Parse(match.Groups[9].Value);
+            }
+
+            displays.Add(new DisplayInfo 
+            { 
+                Port = port,
+                Width = width,
+                Height = height,
+                X = x,
+                Y = y
+            });
+        }
+
+        // We need at least two displays
+        if (displays.Count < 2)
+        {
+            Debug.LogError($"Not enough displays detected. Found {displays.Count} displays: {string.Join(", ", displays)}");
+            return false;
+        }
+
+        // Find the landscape display which is likely to be the touch screen
+        var landscapeDisplay = displays.FirstOrDefault(d => d.IsLandscape);
+        if (landscapeDisplay == null)
+        {
+            Debug.LogError("No landscape display detected.");
+            return false;
+        }
+
+        _touchDisplayPort = landscapeDisplay.Port;
+        Debug.Log($"Detected touch display on port: {_touchDisplayPort} ({landscapeDisplay.Width}x{landscapeDisplay.Height})");
+        return true;
     }
 
-    string screenPattern = @"current (\d+) x (\d+)";
-    Match screenMatch = Regex.Match(xrandrOutput, screenPattern);
-
-    if (screenMatch.Success)
+    private bool DetectTouchDevice()
     {
-      totalWidth = float.Parse(screenMatch.Groups[1].Value);
-      totalHeight = float.Parse(screenMatch.Groups[2].Value);
+        string xinputListOutput = ExecuteCommand("xinput list");
+        
+        // Pattern to match input devices with "touch" in their name (case insensitive)
+        string touchPattern = @"↳\s+(.*?(?:touch|mtouch).*?)\s+id=\d+\s+\[slave\s+pointer";
+        var match = Regex.Match(xinputListOutput, touchPattern, RegexOptions.IgnoreCase);
+
+        if (match.Success)
+        {
+            _touchDeviceName = match.Groups[1].Value.Trim();
+            Debug.Log($"Detected touch device: {_touchDeviceName}");
+            return true;
+        }
+
+        return false;
     }
 
-    Debug.Log($"Display: {displayWidth}x{displayHeight}+{displayX}+{displayY}, Screen: {totalWidth}x{totalHeight}");
-    return (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
-  }
-
-  // Function to set the coordinate transformation matrix
-  private void SetCoordinateTransformationMatrix(int deviceId, float displayWidth, float displayHeight, float displayX, float displayY, float totalWidth, float totalHeight)
-  {
-    if (deviceId < 0)
+    private string ExecuteCommand(string command)
     {
-      return;
+        Debug.Log($"Executing command: bash -c {command}");
+        var result = ExecuteCommandPlugin.RunCommand($"bash -c \"{command}\"");
+        Debug.Log($"Command output: {result}");
+        return result;
     }
 
-    // Calculate the transformation matrix to map the touch to the specific display
-    float scaleX = displayWidth / totalWidth;
-    float scaleY = displayHeight / totalHeight;
-    float offsetX = displayX / totalWidth;
-    float offsetY = displayY / totalHeight;
+    private int GetDeviceId(string xinputListOutput)
+    {
+        // Escape any special regex characters in the device name
+        string escapedDeviceName = Regex.Escape(_touchDeviceName);
+        string pattern = $@"{escapedDeviceName}\s+id=(\d+)";
+        Match match = Regex.Match(xinputListOutput, pattern);
 
-    Debug.Log($"Setting transformation matrix: {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1");
-    string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
-    // string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' 1 0 0 0 1 0 0 0 1";
-    _ = ExecuteCommand(command);
-  }
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int deviceId))
+        {
+            return deviceId;
+        }
+
+        Debug.LogError($"Touch device '{_touchDeviceName}' not found.");
+        OnError?.Invoke($"Touch device '{_touchDeviceName}' not found.");
+        return -1;
+    }
+
+    private void MapDeviceToOutput(int deviceId, string output)
+    {
+        if (deviceId < 0)
+        {
+            return;
+        }
+
+        string command = $"xinput map-to-output {deviceId} {output}";
+        _ = ExecuteCommand(command);
+    }
+
+    private (float displayWidth, float displayHeight, float displayX, float displayY, float totalWidth, float totalHeight) GetDisplayDimensions(string outputDisplay)
+    {
+        string xrandrOutput = ExecuteCommand("xrandr");
+        Debug.Log($"Xrandr: {xrandrOutput}");
+
+        float displayWidth = EXPECTED_TOUCH_WIDTH;
+        float displayHeight = EXPECTED_TOUCH_HEIGHT;
+        float displayX = 0f;
+        float displayY = 0f;
+        float totalWidth = Screen.width;
+        float totalHeight = Screen.height;
+
+        // Get the specific display dimensions and position
+        string displayPattern = $@"{Regex.Escape(outputDisplay)} connected.*?(\d+)x(\d+)\+(\d+)\+(\d+)";
+        Match displayMatch = Regex.Match(xrandrOutput, displayPattern);
+
+        if (displayMatch.Success)
+        {
+            displayWidth = float.Parse(displayMatch.Groups[1].Value);
+            displayHeight = float.Parse(displayMatch.Groups[2].Value);
+            displayX = float.Parse(displayMatch.Groups[3].Value);
+            displayY = float.Parse(displayMatch.Groups[4].Value);
+        }
+
+        // Get the total screen dimensions
+        string screenPattern = @"current (\d+) x (\d+)";
+        Match screenMatch = Regex.Match(xrandrOutput, screenPattern);
+
+        if (screenMatch.Success)
+        {
+            totalWidth = float.Parse(screenMatch.Groups[1].Value);
+            totalHeight = float.Parse(screenMatch.Groups[2].Value);
+        }
+
+        Debug.Log($"Display: {displayWidth}x{displayHeight}+{displayX}+{displayY}, Screen: {totalWidth}x{totalHeight}");
+        return (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
+    }
+
+    private void SetCoordinateTransformationMatrix(int deviceId, float displayWidth, float displayHeight, float displayX, float displayY, float totalWidth, float totalHeight)
+    {
+        if (deviceId < 0)
+        {
+            return;
+        }
+
+        // Calculate scaling factors
+        float scaleX = displayWidth / totalWidth;
+        float scaleY = displayHeight / totalHeight;
+        
+        // Calculate offsets as proportion of total dimensions
+        float offsetX = displayX / totalWidth;
+        float offsetY = displayY / totalHeight;
+
+        string matrix = $"{scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
+        Debug.Log($"Setting transformation matrix: {matrix}");
+        
+        string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {matrix}";
+        _ = ExecuteCommand(command);
+    }
 #endif
 }
