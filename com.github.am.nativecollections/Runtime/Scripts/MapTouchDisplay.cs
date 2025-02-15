@@ -10,9 +10,17 @@ public class MapTouchDisplay : MonoBehaviour
   public static event Action<string> OnError;
 
   private string _touchDisplayPort;
-  private string _touchDeviceName;
+  private List<TouchDeviceInfo> _touchDevices;
   private const int EXPECTED_TOUCH_WIDTH = 1920;
   private const int EXPECTED_TOUCH_HEIGHT = 1080;
+
+  private class TouchDeviceInfo
+  {
+    public string Name { get; set; }
+    public int Id { get; set; }
+    public bool IsMainTouchDevice { get; set; }
+    public override string ToString() => $"{Name} (ID: {Id})";
+  }
 
   private void Start()
   {
@@ -23,22 +31,20 @@ public class MapTouchDisplay : MonoBehaviour
       return;
     }
 
-    if (!DetectTouchDevice())
+    if (!DetectTouchDevices())
     {
-      Debug.LogError("Failed to detect touch input device.");
-      OnError?.Invoke("Failed to detect touch input device.");
+      Debug.LogError("Failed to detect touch input devices.");
+      OnError?.Invoke("Failed to detect touch input devices.");
       return;
     }
 
-    string xinputListOutput = ExecuteCommand("xinput list");
-    int deviceId = GetDeviceId(xinputListOutput);
-    if (deviceId != -1)
-    {
-      Debug.Log($"Mapping touch device '{_touchDeviceName}' (ID: {deviceId}) to display {_touchDisplayPort}");
+    var (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight) = GetDisplayDimensions(_touchDisplayPort);
 
-      var (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight) = GetDisplayDimensions(_touchDisplayPort);
-      MapDeviceToOutput(deviceId, _touchDisplayPort);
-      SetCoordinateTransformationMatrix(deviceId, displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
+    foreach (var device in _touchDevices)
+    {
+      Debug.Log($"Mapping touch device '{device.Name}' (ID: {device.Id}) to display {_touchDisplayPort}");
+      MapDeviceToOutput(device.Id, _touchDisplayPort);
+      SetCoordinateTransformationMatrix(device.Id, displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
     }
   }
 
@@ -113,22 +119,53 @@ public class MapTouchDisplay : MonoBehaviour
     return true;
   }
 
-  private bool DetectTouchDevice()
+  private bool DetectTouchDevices()
   {
     string xinputListOutput = ExecuteCommand("xinput list");
+    _touchDevices = new List<TouchDeviceInfo>();
 
-    // Pattern to match input devices with "touch" in their name (case insensitive)
-    string touchPattern = @"↳\s+(.*?(?:touch|mtouch).*?)\s+id=\d+\s+\[slave\s+pointer";
-    var match = Regex.Match(xinputListOutput, touchPattern, RegexOptions.IgnoreCase);
+    // Pattern to match all touch devices (both pointer and keyboard)
+    string touchPattern = @"↳\s+([^\n]*?(?:touch|Touch|TOUCH)[^\n]*?)\s+id=(\d+)\s+\[slave\s+(pointer|keyboard)";
+    var matches = Regex.Matches(xinputListOutput, touchPattern, RegexOptions.IgnoreCase);
 
-    if (match.Success)
+    // Process matches and identify pointer devices only
+    var touchDevices = matches.Cast<Match>()
+        .Select(m => new
+        {
+          Name = m.Groups[1].Value.Trim(),
+          Id = int.Parse(m.Groups[2].Value),
+          Type = m.Groups[3].Value.ToLower()
+        })
+        .Where(x => x.Type == "pointer")  // Only include pointer devices
+        .OrderBy(x => x.Id)
+        .ToList();
+
+    // Process only pointer devices for touch mapping
+    foreach (var device in touchDevices)
     {
-      _touchDeviceName = match.Groups[1].Value.Trim();
-      Debug.Log($"Detected touch device: {_touchDeviceName}");
-      return true;
+      string deviceName = device.Name;
+      int deviceId = device.Id;
+
+      // For single pointer devices, it's the main device
+      bool isMainDevice = touchDevices.Count == 1 || device == touchDevices.First();
+
+      _touchDevices.Add(new TouchDeviceInfo
+      {
+        Name = deviceName,
+        Id = deviceId,
+        IsMainTouchDevice = isMainDevice
+      });
+
+      Debug.Log($"Detected touch device: {deviceName} (ID: {deviceId}, Main: {isMainDevice})");
     }
 
-    return false;
+    if (_touchDevices.Count == 0)
+    {
+      Debug.LogError("No touch devices found in xinput list.");
+      return false;
+    }
+
+    return true;
   }
 
   private string ExecuteCommand(string command)
@@ -139,27 +176,11 @@ public class MapTouchDisplay : MonoBehaviour
     return result;
   }
 
-  private int GetDeviceId(string xinputListOutput)
-  {
-    // Escape any special regex characters in the device name
-    string escapedDeviceName = Regex.Escape(_touchDeviceName);
-    string pattern = $@"{escapedDeviceName}\s+id=(\d+)";
-    Match match = Regex.Match(xinputListOutput, pattern);
-
-    if (match.Success && int.TryParse(match.Groups[1].Value, out int deviceId))
-    {
-      return deviceId;
-    }
-
-    Debug.LogError($"Touch device '{_touchDeviceName}' not found.");
-    OnError?.Invoke($"Touch device '{_touchDeviceName}' not found.");
-    return -1;
-  }
-
   private void MapDeviceToOutput(int deviceId, string output)
   {
     if (deviceId < 0)
     {
+      Debug.LogError($"Invalid device ID: {deviceId}");
       return;
     }
 
@@ -190,6 +211,10 @@ public class MapTouchDisplay : MonoBehaviour
       displayX = float.Parse(displayMatch.Groups[3].Value);
       displayY = float.Parse(displayMatch.Groups[4].Value);
     }
+    else
+    {
+      Debug.LogWarning($"Could not find display dimensions for {outputDisplay}, using defaults");
+    }
 
     // Get the total screen dimensions
     string screenPattern = @"current (\d+) x (\d+)";
@@ -200,6 +225,10 @@ public class MapTouchDisplay : MonoBehaviour
       totalWidth = float.Parse(screenMatch.Groups[1].Value);
       totalHeight = float.Parse(screenMatch.Groups[2].Value);
     }
+    else
+    {
+      Debug.LogWarning("Could not find total screen dimensions, using Unity Screen values");
+    }
 
     Debug.Log($"Display: {displayWidth}x{displayHeight}+{displayX}+{displayY}, Screen: {totalWidth}x{totalHeight}");
     return (displayWidth, displayHeight, displayX, displayY, totalWidth, totalHeight);
@@ -209,6 +238,7 @@ public class MapTouchDisplay : MonoBehaviour
   {
     if (deviceId < 0)
     {
+      Debug.LogError($"Invalid device ID: {deviceId}");
       return;
     }
 
@@ -221,7 +251,7 @@ public class MapTouchDisplay : MonoBehaviour
     float offsetY = displayY / totalHeight;
 
     string matrix = $"{scaleX} 0 {offsetX} 0 {scaleY} {offsetY} 0 0 1";
-    Debug.Log($"Setting transformation matrix: {matrix}");
+    Debug.Log($"Setting transformation matrix for device {deviceId}: {matrix}");
 
     string command = $"xinput set-prop {deviceId} 'Coordinate Transformation Matrix' {matrix}";
     _ = ExecuteCommand(command);
